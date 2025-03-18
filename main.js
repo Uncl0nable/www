@@ -1,126 +1,99 @@
-// Initialize Scene, Camera, Renderer
+// Scene setup
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Add simple lighting
-const light = new THREE.PointLight(0xFFFFFF, 1, 100);
-light.position.set(0, 10, 0);
+// Lighting
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(1, 1, 1).normalize();
 scene.add(light);
 
-// Set camera position
-camera.position.set(0, 5, 10);
+// Player setup
+const player = {
+  position: new THREE.Vector3(0, 1, 0),
+  velocity: new THREE.Vector3(0, 0, 0),
+  yaw: 0,
+  pitch: 0,
+  speed: 0.1,
+};
 
-// Update window resize
+// Terrain generation
+const world = {};
+const blockSize = 1;
+const chunkSize = 16;
+
+function generateChunk(x, z) {
+  const chunk = [];
+  for (let i = 0; i < chunkSize; i++) {
+    for (let j = 0; j < chunkSize; j++) {
+      const height = Math.floor(Math.random() * 4) + 1;
+      for (let k = 0; k < height; k++) {
+        const block = new THREE.Mesh(
+          new THREE.BoxGeometry(blockSize, blockSize, blockSize),
+          new THREE.MeshPhongMaterial({ color: 0x00ff00 })
+        );
+        block.position.set(x + i, k, z + j);
+        scene.add(block);
+        chunk.push(block);
+      }
+    }
+  }
+  world[`${x},${z}`] = chunk;
+}
+
+generateChunk(0, 0);
+
+// Player movement
+const keys = {};
+document.addEventListener('keydown', (e) => (keys[e.code] = true));
+document.addEventListener('keyup', (e) => (keys[e.code] = false));
+
+function updatePlayer() {
+  if (keys['KeyW']) {
+    player.position.z -= player.speed;
+  }
+  if (keys['KeyS']) {
+    player.position.z += player.speed;
+  }
+  if (keys['KeyA']) {
+    player.position.x -= player.speed;
+  }
+  if (keys['KeyD']) {
+    player.position.x += player.speed;
+  }
+  if (keys['Space']) {
+    player.position.y += player.speed;
+  }
+  if (keys['ShiftLeft']) {
+    player.position.y -= player.speed;
+  }
+}
+
+// Camera controls
+document.addEventListener('mousemove', (e) => {
+  player.yaw -= e.movementX * 0.002;
+  player.pitch -= e.movementY * 0.002;
+  player.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, player.pitch));
+});
+
+// Render loop
+function animate() {
+  requestAnimationFrame(animate);
+  updatePlayer();
+
+  // Update camera position and rotation
+  camera.position.copy(player.position);
+  camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// Handle window resize
 window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
-
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    renderer.render(scene, camera);
-}
-animate();
-
-// Function to create a block (cube)
-function createBlock(x, y, z) {
-    const geometry = new THREE.BoxGeometry(1, 1, 1); // Cube of size 1x1x1
-    const material = new THREE.MeshLambertMaterial({ color: 0x00ff00 }); // Green block
-    const block = new THREE.Mesh(geometry, material);
-    block.position.set(x, y, z);
-    scene.add(block);
-    return block;
-}
-
-// Create a grid of blocks (like a floor)
-for (let x = -5; x < 5; x++) {
-    for (let z = -5; z < 5; z++) {
-        createBlock(x, 0, z); // Create blocks on the ground
-    }
-}
-
-function generateWorld() {
-    for (let x = -50; x < 50; x++) {
-        for (let z = -50; z < 50; z++) {
-            createBlock(x, 0, z); // Generate blocks at y = 0 (ground level)
-        }
-    }
-}
-
-generateWorld();
-
-const controls = new THREE.PointerLockControls(camera, renderer.domElement);
-
-// Mouse event listener to lock the mouse cursor
-document.body.addEventListener('click', () => {
-    controls.lock();
-});
-
-// Movement variables
-let velocity = new THREE.Vector3();
-const speed = 0.1;
-const clock = new THREE.Clock();
-
-// Movement based on WASD keys
-document.addEventListener('keydown', (event) => {
-    switch (event.key) {
-        case 'w':
-            velocity.z = -speed;
-            break;
-        case 's':
-            velocity.z = speed;
-            break;
-        case 'a':
-            velocity.x = -speed;
-            break;
-        case 'd':
-            velocity.x = speed;
-            break;
-    }
-});
-
-document.addEventListener('keyup', (event) => {
-    if (['w', 's'].includes(event.key)) velocity.z = 0;
-    if (['a', 'd'].includes(event.key)) velocity.x = 0;
-});
-
-// Update the camera position based on the velocity
-function update() {
-    const delta = clock.getDelta();
-    controls.moveRight(velocity.x * delta);
-    controls.moveForward(velocity.z * delta);
-    renderer.render(scene, camera);
-}
-
-// Animation loop
-function animate() {
-    requestAnimationFrame(animate);
-    update();
-}
-
-animate();
-
-function checkCollision(camera, world) {
-    world.children.forEach(block => {
-        if (block.geometry instanceof THREE.BoxGeometry) {
-            if (camera.position.distanceTo(block.position) < 1) {
-                // Prevent camera from moving into the block
-                camera.position.set(0, 5, 10); // Example collision resolution
-            }
-        }
-    });
-}
-
-// Call this function in the animation loop
-function update() {
-    const delta = clock.getDelta();
-    controls.moveRight(velocity.x * delta);
-    controls.moveForward(velocity.z * delta);
-    checkCollision(camera, scene);
-    renderer.render(scene, camera);
-}
